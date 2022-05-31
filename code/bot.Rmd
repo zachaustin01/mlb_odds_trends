@@ -1,0 +1,163 @@
+---
+title: "Bot"
+author: "Zach Austin"
+date: "5/28/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+rm(list=ls())
+
+```
+
+```{r}
+
+
+project_name = 'mlb_odds_trends'
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+repo_path = file.path(substr(getwd(),0,gregexpr(pattern = project_name ,
+                                                getwd())[[1]][1]-2),
+                      project_name)
+
+source(file.path(repo_path,
+                 'code',
+                 'utilities',
+                 'load_directories.r'),
+       local = knitr::knit_global())
+
+p <- c("tidyverse",
+       "httr",
+       "lubridate",
+       "ggplot2"
+)
+
+load_all_packages(p)
+
+source(file.path(objects_path,'odds_functions.r'))
+
+
+```
+
+# Read Data
+- See Sports Data Collection / MLB / Pregame Lines
+
+```{r}
+
+tidy_data = read.csv(file.path(data_in,'action','tidy.csv'))
+
+```
+
+## Clean Data
+
+### Timezone adjustment
+
+```{r}
+
+hour_adj = hours(4)
+
+tidy_data$GAME_TIME = as_datetime(tidy_data$GAME_TIME) - hour_adj
+
+tidy_data$GAME_DATE = as.Date(tidy_data$GAME_TIME)
+
+```
+
+
+# Caclulate Result Metrics
+
+Results Needed:
+- FG/F5
+  - ATS
+  - Over / Under
+
+```{r}
+
+res_data = tidy_data %>% 
+  mutate(
+    
+    FG_ATS = ifelse(FG_SPREAD > - (FG_RUNS - FG_OPP_RUNS),"WIN",
+                    ifelse(FG_SPREAD < - (FG_RUNS - FG_OPP_RUNS),"LOSE",
+                    "PUSH")),
+    FG_ATS_UNITS = ifelse(FG_ATS=="WIN",
+                          ifelse(FG_SPREAD_PRICE<0,-100/FG_SPREAD_PRICE,FG_SPREAD_PRICE/100),
+                          ifelse(FG_ATS=="LOSE",-1,0)),
+    F5_ATS = ifelse(F5_SPREAD > - (F5_RUNS - F5_OPP_RUNS),"WIN",
+                    ifelse(F5_SPREAD < - (F5_RUNS - F5_OPP_RUNS),"LOSE",
+                    "PUSH")),
+    F5_ATS_UNITS = ifelse(F5_ATS=="WIN",
+                          ifelse(F5_SPREAD_PRICE<0,-100/F5_SPREAD_PRICE,F5_SPREAD_PRICE/100),
+                          ifelse(F5_ATS=="LOSE",-1,0)),
+    FG_OU = ifelse(FG_TOTAL < FG_TOTAL_RUNS,"OVER",
+                     ifelse(FG_TOTAL > FG_TOTAL_RUNS,"UNDER",
+                     "PUSH")),
+    FG_OVER_UNITS = ifelse(FG_OU=="OVER",
+                           ifelse(FG_TOTAL_O_PRICE<0,-100/FG_TOTAL_O_PRICE,FG_TOTAL_O_PRICE/100),
+                           ifelse(FG_OU=="UNDER",-1,0)),
+    FG_UNDER_UNITS = ifelse(FG_OU=="UNDER",
+                           ifelse(FG_TOTAL_U_PRICE<0,-100/FG_TOTAL_U_PRICE,FG_TOTAL_U_PRICE/100),
+                           ifelse(FG_OU=="OVER",-1,0))
+    
+  )
+
+```
+
+
+# Check for Insights
+
+## League Trends
+
+```{r}
+
+names(res_data)
+
+```
+
+### O / U by Team
+
+```{r}
+
+# O_U_by_team
+v1 = res_data %>% 
+  select(GAME_DATE,TEAM_NAME,FG_OU,FG_OVER_UNITS,FG_UNDER_UNITS) %>% 
+  group_by(TEAM_NAME) %>% 
+  summarize(FG_O_PROFIT = sum(FG_OVER_UNITS),
+            FG_U_PROFIT = sum(FG_UNDER_UNITS),
+            FG_O = sum(ifelse(FG_OU=="OVER",1,0)),
+            FG_U = sum(ifelse(FG_OU=="UNDER",1,0)),
+            FG_P = sum(ifelse(FG_OU=="PUSH",1,0)))
+  
+  
+write.csv(v1,file.path(data_in,'insights','O_U_by_team.csv'),row.names = F)
+
+```
+
+### ATS by Team
+
+```{r}
+
+v2 = res_data %>% 
+  select(GAME_DATE,TEAM_NAME,FG_ATS,FG_ATS_UNITS,FG_SPREAD_PRICE) %>% 
+  group_by(TEAM_NAME) %>% 
+  summarize(ATS_PROFIT = sum(FG_ATS_UNITS),
+            ATS_W = sum(ifelse(FG_ATS=="WIN",1,0)),
+            ATS_L = sum(ifelse(FG_ATS=="LOSE",1,0)),
+            ATS_P = sum(ifelse(FG_ATS=="PUSH",1,0)),
+            ATS_W_pct = ATS_W / (ATS_W+ATS_L+ATS_P)
+            ) %>% 
+  arrange(desc(ATS_PROFIT))
+
+```
+
+
+
+
+
+
+
