@@ -14,7 +14,11 @@ objects_path = file.path(code_path,
 util_path = file.path(code_path,
                       'utilities')
 
-data_in = file.path(substr(getwd(),0,gregexpr(pattern = project_name ,
-                                               getwd())[[1]][1]-2),"sports_data_storage/sports/mlb/pregame_lines")
+data_base = file.path(substr(getwd(),0,gregexpr(pattern = project_name ,
+                                                getwd())[[1]][1]-2),"sports_data_storage/sports/mlb")
+data_in = file.path(data_base,'pregame_lines')
+
+hook_path = file.path(data_base,
+                      'webhooks')
 
 source(file.path(util_path,'general_utilities.r'))

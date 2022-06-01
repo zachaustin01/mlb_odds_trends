@@ -79,32 +79,7 @@ Results Needed:
 
 ```{r}
 
-res_data = tidy_data %>% 
-  mutate(
-    
-    FG_ATS = ifelse(FG_SPREAD > - (FG_RUNS - FG_OPP_RUNS),"WIN",
-                    ifelse(FG_SPREAD < - (FG_RUNS - FG_OPP_RUNS),"LOSE",
-                    "PUSH")),
-    FG_ATS_UNITS = ifelse(FG_ATS=="WIN",
-                          ifelse(FG_SPREAD_PRICE<0,-100/FG_SPREAD_PRICE,FG_SPREAD_PRICE/100),
-                          ifelse(FG_ATS=="LOSE",-1,0)),
-    F5_ATS = ifelse(F5_SPREAD > - (F5_RUNS - F5_OPP_RUNS),"WIN",
-                    ifelse(F5_SPREAD < - (F5_RUNS - F5_OPP_RUNS),"LOSE",
-                    "PUSH")),
-    F5_ATS_UNITS = ifelse(F5_ATS=="WIN",
-                          ifelse(F5_SPREAD_PRICE<0,-100/F5_SPREAD_PRICE,F5_SPREAD_PRICE/100),
-                          ifelse(F5_ATS=="LOSE",-1,0)),
-    FG_OU = ifelse(FG_TOTAL < FG_TOTAL_RUNS,"OVER",
-                     ifelse(FG_TOTAL > FG_TOTAL_RUNS,"UNDER",
-                     "PUSH")),
-    FG_OVER_UNITS = ifelse(FG_OU=="OVER",
-                           ifelse(FG_TOTAL_O_PRICE<0,-100/FG_TOTAL_O_PRICE,FG_TOTAL_O_PRICE/100),
-                           ifelse(FG_OU=="UNDER",-1,0)),
-    FG_UNDER_UNITS = ifelse(FG_OU=="UNDER",
-                           ifelse(FG_TOTAL_U_PRICE<0,-100/FG_TOTAL_U_PRICE,FG_TOTAL_U_PRICE/100),
-                           ifelse(FG_OU=="OVER",-1,0))
-    
-  )
+
 
 ```
 
@@ -125,8 +100,8 @@ names(res_data)
 
 # O_U_by_team
 v1 = res_data %>% 
-  select(GAME_DATE,TEAM_NAME,FG_OU,FG_OVER_UNITS,FG_UNDER_UNITS) %>% 
-  group_by(TEAM_NAME) %>% 
+  select(GAME_DATE,TEAM_NAME,FG_OU,FG_OVER_UNITS,FG_UNDER_UNITS,OPP_PITCHER_THROW) %>% 
+  group_by(TEAM_NAME,OPP_PITCHER_THROW) %>% 
   summarize(FG_O_PROFIT = sum(FG_OVER_UNITS),
             FG_U_PROFIT = sum(FG_UNDER_UNITS),
             FG_O = sum(ifelse(FG_OU=="OVER",1,0)),
@@ -143,15 +118,53 @@ write.csv(v1,file.path(data_in,'insights','O_U_by_team.csv'),row.names = F)
 ```{r}
 
 v2 = res_data %>% 
-  select(GAME_DATE,TEAM_NAME,FG_ATS,FG_ATS_UNITS,FG_SPREAD_PRICE) %>% 
-  group_by(TEAM_NAME) %>% 
+  select(GAME_DATE,TEAM_NAME,FG_ATS,FG_ATS_UNITS,FG_SPREAD_PRICE,OPP_PITCHER_THROW) %>% 
+  group_by(TEAM_NAME,OPP_PITCHER_THROW) %>% 
   summarize(ATS_PROFIT = sum(FG_ATS_UNITS),
-            ATS_W = sum(ifelse(FG_ATS=="WIN",1,0)),
-            ATS_L = sum(ifelse(FG_ATS=="LOSE",1,0)),
-            ATS_P = sum(ifelse(FG_ATS=="PUSH",1,0)),
+            ATS_W = sum(ifelse(FG_ATS=="WIN",1,0), na.rm = T),
+            ATS_L = sum(ifelse(FG_ATS=="LOSE",1,0), na.rm = T),
+            ATS_P = sum(ifelse(FG_ATS=="PUSH",1,0), na.rm = T),
             ATS_W_pct = ATS_W / (ATS_W+ATS_L+ATS_P)
             ) %>% 
   arrange(desc(ATS_PROFIT))
+
+write.csv(v2,file.path(data_in,'insights','ATS_by_team.csv'),row.names = F)
+
+```
+
+### Team vs Pitcher
+
+```{r}
+
+v3 = res_data %>% 
+  select(GAME_DATE,TEAM_NAME,FG_RUNS,F5_RUNS,OPP_PITCHER_NAME) %>% 
+  group_by(TEAM_NAME,OPP_PITCHER_NAME) %>% 
+  summarize(n = n(),
+            MED_F5_RUNS = median(F5_RUNS, na.rm = T),
+            MED_FG_RUNS = median(FG_RUNS, na.rm = T),
+            MEAN_F5_RUNS = mean(F5_RUNS, na.rm = T),
+            MEAN_FG_RUNS = mean(FG_RUNS, na.rm = T)) %>% 
+  arrange(desc(n))
+
+write.csv(v3,file.path(data_in,'insights',"RUNS_by_team_vs_pitcher.csv"),row.names = F)
+
+```
+
+### Runs by Team
+
+```{r}
+
+v4 = res_data %>% 
+  select(GAME_DATE,TEAM_NAME,FG_RUNS,F5_RUNS,OPP_PITCHER_THROW) %>% 
+  group_by(TEAM_NAME,OPP_PITCHER_THROW) %>% 
+  summarize(n = n(),
+            MED_F5_RUNS = median(F5_RUNS, na.rm = T),
+            MED_FG_RUNS = median(FG_RUNS, na.rm = T),
+            MEAN_F5_RUNS = mean(F5_RUNS, na.rm = T),
+            MEAN_FG_RUNS = mean(FG_RUNS, na.rm = T)) %>% 
+  arrange(TEAM_NAME)
+
+write.csv(v4,file.path(data_in,'insights',"RUNS_by_team_vs_phand.csv"),row.names = F)
 
 ```
 
