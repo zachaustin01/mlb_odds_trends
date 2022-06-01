@@ -158,6 +158,9 @@ for(g_num in 1:nrow(today_lines)){
                    pitcher,
                    home_away)
 
+  away = interpreter(away_gsr) %>%
+    unique()
+
   # Home Team Filter Parameters
   team_name = row$HOME_TEAM_NAME
   opp_team_name = row$AWAY_TEAM_NAME
@@ -174,10 +177,10 @@ for(g_num in 1:nrow(today_lines)){
                               opp_p_hand,
                               opp_pitcher,
                               home_away)
-  row$FG_TOTAL
 
 
-
+  home_msgs = interpreter(home_gsr) %>%
+    unique()
 
 
 
@@ -194,18 +197,19 @@ for(g_num in 1:nrow(today_lines)){
 output_hookurl <- fromJSON(file=file.path(hook_path,'webhooks.json'))[['trends_url']]
 
 msg_elem = c(
-  header,
-  subheader1,
-  subheader2,
-  subheader3,
+  # header,
+  # subheader1,
+  # subheader2,
+  # subheader3,
+  # '---------',
+  # msgs,
   '---------',
-  msgs,
-
+  home_msgs,
   '__________________'
 )
 
 for(m in msg_elem){
   print(m)
-  # send_to_discord(m,output_hookurl)
+  send_to_discord(m,output_hookurl)
   Sys.sleep(0.5)
 }

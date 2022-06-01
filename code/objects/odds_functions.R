@@ -132,7 +132,7 @@ filter_mlb_data <- function(data,
 
   if(!is.na(opp_team_name)){
     data = data %>%
-      filter(OPP_TEAM_NAME==opp_team_name) %>%
+      filter(OPP_TEAM_NAME == opp_team_name) %>%
       group_by(OPP_TEAM_NAME,.add = T)
   }
 
