@@ -1,7 +1,7 @@
 
 days_results = function(d){
 
-  # d = '20220526'
+  # d = '20220617'
 
   # Build URL
   link = paste0("https://api.actionnetwork.com/web/v1/scoreboard/mlb?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=",d)
@@ -83,7 +83,12 @@ days_results = function(d){
 
     temp = base[g_num,]
 
-    if(!(temp$status %in% c('postponed','cancelled')) & !is.null(temp$players[[1]])){
+    game_lines = temp$odds[[1]] %>%
+      filter(type=='game',
+             !is.na(spread_home)) %>%
+      filter(row_number()==1)
+
+    if(!(temp$status %in% c('postponed','cancelled')) & !is.null(temp$players[[1]]) & (nrow(game_lines)>0)){
 
       row$GAME_TIME = temp$start_time
       row$HOME_TEAM_ID = temp$home_team_id
@@ -147,11 +152,6 @@ days_results = function(d){
                AWAY_PITCHER_THROW = throw) %>%
         select(-c(full_name,throw))
       row = r2
-
-      game_lines = temp$odds[[1]] %>%
-        filter(type=='game',
-               !is.na(spread_home)) %>%
-        filter(row_number()==1)
 
       # Set Lines
       row$HOME_FG_SPREAD = game_lines$spread_home

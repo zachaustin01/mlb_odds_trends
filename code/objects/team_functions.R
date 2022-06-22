@@ -57,10 +57,11 @@ team_rankings <- function(res_data){
     group_by(GAME_DATE) %>%
     mutate(F5_OFFENSE_RANK = dense_rank(desc(F5_AVG_RUNS)),
            FG_OFFENSE_RANK = dense_rank(desc(FG_AVG_RUNS)),
-           F5_PITCHING_RANK = dense_rank(desc(F5_AVG_OPP_RUNS)),
-           FG_PITCHING_RANK = dense_rank(desc(FG_AVG_OPP_RUNS))) %>%
+           F5_PITCHING_RANK = dense_rank((F5_AVG_OPP_RUNS)),
+           FG_PITCHING_RANK = dense_rank((FG_AVG_OPP_RUNS))) %>%
     arrange(TEAM_NAME,GAME_DATE)
 
   write.csv(df2,file.path(data_in,'rankings','team_rankings.csv'),row.names = F)
+  return(df2)
 
 }

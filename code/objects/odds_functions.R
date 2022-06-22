@@ -3,13 +3,9 @@
 # Function to generate spread results fields and return to main file
 ################################################################################
 
-res_data_gen <- function(data){
+res_data_gen <- function(data,t_rankings){
 
   tidy_data = data
-
-  hour_adj = hours(4)
-  tidy_data$GAME_TIME = as_datetime(tidy_data$GAME_TIME) - hour_adj
-  tidy_data$GAME_DATE = as.Date(tidy_data$GAME_TIME)
 
   res_data = tidy_data %>%
     mutate(
@@ -44,7 +40,11 @@ res_data_gen <- function(data){
                               ifelse(F5_TOTAL_U_PRICE<0,-100/F5_TOTAL_U_PRICE,F5_TOTAL_U_PRICE/100),
                               ifelse(F5_OU=="OVER",-1,0))
     )
-  return(res_data)
+
+  temp = res_data %>%
+    left_join(t_rankings,by = c("OPP_TEAM_NAME"="TEAM_NAME", "GAME_DATE"))
+
+  return(temp)
 }
 
 ################################################################################
@@ -53,6 +53,7 @@ res_data_gen <- function(data){
 ################################################################################
 
 man_data_gen <- function(data,
+                         t_rankings,
                          total_fg,
                          total_o_price_fg,
                          total_u_price_fg,
@@ -65,10 +66,6 @@ man_data_gen <- function(data,
                          spread_price_f5){
 
   tidy_data = data
-
-  hour_adj = hours(4)
-  tidy_data$GAME_TIME = as_datetime(tidy_data$GAME_TIME) - hour_adj
-  tidy_data$GAME_DATE = as.Date(tidy_data$GAME_TIME)
 
   res_data = tidy_data %>%
     mutate(FG_ATS = ifelse(spread_fg > - (FG_RUNS - FG_OPP_RUNS),"WIN",
@@ -102,7 +99,11 @@ man_data_gen <- function(data,
                                    ifelse(total_u_price_f5<0,-100/total_u_price_f5,total_u_price_f5/100),
                                    ifelse(F5_OU=="OVER",-1,0)),
     )
-  return(res_data)
+
+  temp = res_data %>%
+    left_join(t_rankings,by = c("OPP_TEAM_NAME"="TEAM_NAME", "GAME_DATE"))
+
+  return(temp)
 }
 
 ################################################################################
@@ -121,75 +122,98 @@ filter_mlb_data <- function(data,
                             total_line = NA,
                             spread_line = NA,
                             total_line_f5 = NA,
-                            spread_line_f5 = NA)
+                            spread_line_f5 = NA,
+
+                            opp_f5_pitching_rank = NA,
+                            opp_fg_pitching_rank = NA,
+                            opp_f5_offense_rank = NA,
+                            opp_fg_offense_rank = NA
+
+                            )
   {
 
+  # Oppenent Rankings at time of matchup
+  if(!is.na(opp_f5_pitching_rank)){
+    data = data %>%
+      filter(F5_PITCHING_RANK <= opp_f5_pitching_rank)
+  }
+  if(!is.na(opp_fg_pitching_rank)){
+    data = data %>%
+      filter(FG_PITCHING_RANK <= opp_fg_pitching_rank)
+  }
+  if(!is.na(opp_f5_offense_rank)){
+    data = data %>%
+      filter(F5_OFFENSE_RANK <= opp_f5_offense_rank)
+  }
+  if(!is.na(opp_fg_offense_rank)){
+    data = data %>%
+      filter(FG_OFFENSE_RANK <= opp_fg_offense_rank)
+  }
+
+  # Team and Opponent Names
   if(!is.na(team_name)){
     data = data %>%
       filter(TEAM_NAME==team_name) %>%
       group_by(TEAM_NAME,.add = T)
   }
-
   if(!is.na(opp_team_name)){
     data = data %>%
       filter(OPP_TEAM_NAME == opp_team_name) %>%
       group_by(OPP_TEAM_NAME,.add = T)
   }
 
+  # Home or Away
   if(!is.na(home_away)){
     data = data %>%
       filter(HOME_AWAY==home_away) %>%
       group_by(HOME_AWAY,.add = T)
   }
 
+  # Starting Pitchers
   if(!is.na(pitcher)){
     data = data %>%
       filter(PITCHER_NAME == pitcher) %>%
       group_by(PITCHER_NAME)
   }
-
   if(!is.na(opp_pitcher)){
     data = data %>%
       filter(OPP_PITCHER_NAME == opp_pitcher) %>%
       group_by(OPP_PITCHER_NAME)
   }
-
   if(!is.na(opp_p_hand)){
     data = data %>%
       filter(OPP_PITCHER_THROW==opp_p_hand) %>%
       group_by(OPP_PITCHER_THROW,.add = T)
   }
-
   if(!is.na(p_hand)){
     data = data %>%
       filter(PITCHER_THROW==p_hand) %>%
       group_by(PITCHER_THROW,.add = T)
   }
 
+  # Specific Lines
   if(!is.na(total_line)){
     data = data %>%
       filter(FG_TOTAL==total_line) %>%
       group_by(FG_TOTAL,.add = T)
   }
-
   if(!is.na(spread_line)){
     data = data %>%
       filter(FG_SPREAD==spread_line) %>%
       group_by(FG_SPREAD,.add = T)
   }
-
   if(!is.na(total_line_f5)){
     data = data %>%
       filter(F5_TOTAL==total_line_f5) %>%
       group_by(F5_TOTAL,.add = T)
   }
-
   if(!is.na(spread_line_f5)){
     data = data %>%
       filter(F5_SPREAD==spread_line_f5) %>%
       group_by(F5_SPREAD,.add = T)
   }
 
+  # Last N games (after other criteria)
   if(!is.na(last_n_games)){
     u_dates = data %>%
       select(GAME_DATE) %>%
@@ -201,8 +225,6 @@ filter_mlb_data <- function(data,
     data = data %>%
       filter(GAME_DATE %in% u_dates$GAME_DATE)
   }
-
-
 
   return(data)
 
@@ -224,7 +246,12 @@ team_ou <- function(data,
                     total_line = NA,
                     spread_line = NA,
                     total_line_f5 = NA,
-                    spread_line_f5 = NA)
+                    spread_line_f5 = NA,
+
+                    opp_f5_pitching_rank = NA,
+                    opp_fg_pitching_rank = NA,
+                    opp_f5_offense_rank = NA,
+                    opp_fg_offense_rank = NA)
   {
 
   # Filter Dataset
@@ -240,7 +267,11 @@ team_ou <- function(data,
                     total_line = total_line,
                     spread_line = spread_line,
                     total_line_f5 = total_line_f5,
-                    spread_line_f5 = spread_line_f5)
+                    spread_line_f5 = spread_line_f5,
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank)
 
   d2 = d2 %>%
     summarize(FG_O_PROFIT = sum(FG_OVER_UNITS,na.rm = T),
@@ -273,7 +304,11 @@ team_ou <- function(data,
 
   df = data.frame(team_name,opp_team_name,last_n_games,opp_p_hand,
                     opp_pitcher,p_hand,pitcher,home_away,total_line,
-                    spread_line,total_line_f5,spread_line_f5)
+                    spread_line,total_line_f5,spread_line_f5,
+                  opp_f5_pitching_rank,
+                  opp_fg_pitching_rank,
+                  opp_f5_offense_rank,
+                  opp_fg_offense_rank)
 
   return(cbind(d3,df))
 }
@@ -293,7 +328,12 @@ team_ats <- function(data,
                     total_line = NA,
                     spread_line = NA,
                     total_line_f5 = NA,
-                    spread_line_f5 = NA)
+                    spread_line_f5 = NA,
+
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank)
 {
 
   # Filter Dataset
@@ -309,7 +349,11 @@ team_ats <- function(data,
                     total_line = total_line,
                     spread_line = spread_line,
                     total_line_f5 = total_line_f5,
-                    spread_line_f5 = spread_line_f5) %>%
+                    spread_line_f5 = spread_line_f5,
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank) %>%
     summarize(ATS_PROFIT = sum(FG_ATS_UNITS),
               ATS_W = sum(ifelse(FG_ATS=="WIN",1,0), na.rm = T),
               ATS_L = sum(ifelse(FG_ATS=="LOSE",1,0), na.rm = T),
@@ -329,7 +373,11 @@ team_ats <- function(data,
 
   df = data.frame(team_name,opp_team_name,last_n_games,opp_p_hand,
                   opp_pitcher,p_hand,pitcher,home_away,total_line,
-                  spread_line,total_line_f5,spread_line_f5)
+                  spread_line,total_line_f5,spread_line_f5,
+                  opp_f5_pitching_rank,
+                  opp_fg_pitching_rank,
+                  opp_f5_offense_rank,
+                  opp_fg_offense_rank)
 
   return(cbind(d2,df))
 }
@@ -349,7 +397,12 @@ team_ou_f5 <- function(data,
                     total_line = NA,
                     spread_line = NA,
                     total_line_f5 = NA,
-                    spread_line_f5 = NA)
+                    spread_line_f5 = NA,
+
+                    opp_f5_pitching_rank = NA,
+                    opp_fg_pitching_rank = NA,
+                    opp_f5_offense_rank = NA,
+                    opp_fg_offense_rank = NA)
 {
 
   # Filter Dataset
@@ -365,7 +418,11 @@ team_ou_f5 <- function(data,
                     total_line = total_line,
                     spread_line = spread_line,
                     total_line_f5 = total_line_f5,
-                    spread_line_f5 = spread_line_f5) %>%
+                    spread_line_f5 = spread_line_f5,
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank) %>%
     summarize(F5_O_PROFIT = sum(F5_OVER_UNITS,na.rm = T),
               F5_U_PROFIT = sum(F5_UNDER_UNITS,na.rm = T),
               F5_O = sum(ifelse(F5_OU=="OVER",1,0),na.rm = T),
@@ -396,7 +453,11 @@ team_ou_f5 <- function(data,
 
   df = data.frame(team_name,opp_team_name,last_n_games,opp_p_hand,
                   opp_pitcher,p_hand,pitcher,home_away,total_line,
-                  spread_line,total_line_f5,spread_line_f5)
+                  spread_line,total_line_f5,spread_line_f5,
+                  opp_f5_pitching_rank,
+                  opp_fg_pitching_rank,
+                  opp_f5_offense_rank,
+                  opp_fg_offense_rank)
 
   return(cbind(d3,df))
 }
@@ -416,7 +477,12 @@ team_ats_f5 <- function(data,
                      total_line = NA,
                      spread_line = NA,
                      total_line_f5 = NA,
-                     spread_line_f5 = NA)
+                     spread_line_f5 = NA,
+
+                     opp_f5_pitching_rank = NA,
+                     opp_fg_pitching_rank = NA,
+                     opp_f5_offense_rank = NA,
+                     opp_fg_offense_rank = NA)
 {
 
   # Filter Dataset
@@ -432,7 +498,11 @@ team_ats_f5 <- function(data,
                     total_line = total_line,
                     spread_line = spread_line,
                     total_line_f5 = total_line_f5,
-                    spread_line_f5 = spread_line_f5) %>%
+                    spread_line_f5 = spread_line_f5,
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank) %>%
     summarize(ATS_PROFIT = sum(F5_ATS_UNITS),
               ATS_W = sum(ifelse(F5_ATS=="WIN",1,0), na.rm = T),
               ATS_L = sum(ifelse(F5_ATS=="LOSE",1,0), na.rm = T),
@@ -452,7 +522,11 @@ team_ats_f5 <- function(data,
 
   df = data.frame(team_name,opp_team_name,last_n_games,opp_p_hand,
                   opp_pitcher,p_hand,pitcher,home_away,total_line,
-                  spread_line,total_line_f5,spread_line_f5)
+                  spread_line,total_line_f5,spread_line_f5,
+                  opp_f5_pitching_rank,
+                  opp_fg_pitching_rank,
+                  opp_f5_offense_rank,
+                  opp_fg_offense_rank)
 
   return(cbind(d2,df))
 }
@@ -472,7 +546,11 @@ team_runs <- function(data,
                       total_line = NA,
                       spread_line = NA,
                       total_line_f5 = NA,
-                      spread_line_f5 = NA
+                      spread_line_f5 = NA,
+                      opp_f5_pitching_rank = NA,
+                      opp_fg_pitching_rank = NA,
+                      opp_f5_offense_rank = NA,
+                      opp_fg_offense_rank = NA
                       )
 {
 
@@ -489,7 +567,11 @@ team_runs <- function(data,
                     total_line = total_line,
                     spread_line = spread_line,
                     total_line_f5 = total_line_f5,
-                    spread_line_f5 = spread_line_f5) %>%
+                    spread_line_f5 = spread_line_f5,
+                    opp_f5_pitching_rank = opp_f5_pitching_rank,
+                    opp_fg_pitching_rank = opp_fg_pitching_rank,
+                    opp_f5_offense_rank = opp_f5_offense_rank,
+                    opp_fg_offense_rank = opp_fg_offense_rank) %>%
     summarize(SAMPLE_SIZE = n(),
               MED_F5_RUNS = median(F5_RUNS, na.rm = T),
               MED_FG_RUNS = median(FG_RUNS, na.rm = T),
@@ -508,7 +590,11 @@ team_runs <- function(data,
 
   df = data.frame(team_name,opp_team_name,last_n_games,opp_p_hand,
                   opp_pitcher,p_hand,pitcher,home_away,total_line,
-                  spread_line,total_line_f5,spread_line_f5)
+                  spread_line,total_line_f5,spread_line_f5,
+                  opp_f5_pitching_rank,
+                  opp_fg_pitching_rank,
+                  opp_f5_offense_rank,
+                  opp_fg_offense_rank)
 
   return(cbind(d2,df))
 }
@@ -519,29 +605,43 @@ team_runs <- function(data,
 
 grid_search_filters <- function(
   res_data,
-  FUN=ats,
+  FUN=team_ats,
   team_name=NA,
   opp_team_name=NA,
   last_n_games=NA,
   opp_p_hand=NA,
   opp_pitcher=NA,
   pitcher=NA,
-  home_away=NA
+  home_away=NA,
+  opp_f5_pitching_rank=NA,
+  opp_fg_pitching_rank=NA,
+  opp_f5_offense_rank=NA,
+  opp_fg_offense_rank=NA
 ){
-  f = data.frame(opp_team_name,last_n_games,opp_p_hand,opp_pitcher,pitcher,home_away)
-  gsr <- data.frame(matrix(ncol = 18, nrow = 0))
+
+  f = data.frame(opp_team_name,last_n_games,opp_p_hand,opp_pitcher,pitcher,
+                 home_away,
+                 opp_f5_pitching_rank,
+                 opp_fg_pitching_rank,
+                 opp_f5_offense_rank,
+                 opp_fg_offense_rank)
+  gsr <- data.frame(matrix(ncol = 22, nrow = 0))
   x <- c("TEAM_NAME","PROFIT","WIN","LOSS","PUSH","TYPE","team_name",
          "opp_team_name","last_n_games","opp_p_hand","opp_pitcher","p_hand",
          "pitcher","home_away","total_line","spread_line","total_line_f5",
-         "spread_line_f5")
+         "spread_line_f5",
+         "opp_f5_pitching_rank",
+         "opp_fg_pitching_rank",
+         "opp_f5_offense_rank",
+         "opp_fg_offense_rank")
   colnames(gsr) <- x
 
-  for(n in 1:length(f)){
+  for(n in 1:3){
     combs = combn(names(f),n)
 
     for(i in 1:ncol(combs)){
       apply_f = f %>% select(combs[,i])
-
+      print(paste0('Comb ',n,': ',i, ' / ',ncol(combs),' filter sets.'))
       t = res_data %>%
         FUN(team_name = team_name,
                  opp_team_name = ifelse(is.null(apply_f$opp_team_name),NA,apply_f$opp_team_name),
@@ -549,7 +649,12 @@ grid_search_filters <- function(
                  opp_p_hand = ifelse(is.null(apply_f$opp_p_hand),NA,apply_f$opp_p_hand),
                  opp_pitcher = ifelse(is.null(apply_f$opp_pitcher),NA,apply_f$opp_pitcher),
                  pitcher = ifelse(is.null(apply_f$pitcher),NA,apply_f$pitcher),
-                 home_away = ifelse(is.null(apply_f$home_away),NA,apply_f$home_away))
+                 home_away = ifelse(is.null(apply_f$home_away),NA,apply_f$home_away),
+                opp_f5_pitching_rank = ifelse(is.null(apply_f$opp_f5_pitching_rank),NA,apply_f$opp_f5_pitching_rank),
+                opp_fg_pitching_rank = ifelse(is.null(apply_f$opp_fg_pitching_rank),NA,apply_f$opp_fg_pitching_rank),
+                opp_f5_offense_rank = ifelse(is.null(apply_f$opp_f5_offense_rank),NA,apply_f$opp_f5_offense_rank),
+                opp_fg_offense_rank = ifelse(is.null(apply_f$opp_fg_offense_rank),NA,apply_f$opp_fg_offense_rank)
+            )
 
       if(!is.null(t)){
         gsr = rbind(gsr,t)
@@ -567,14 +672,23 @@ grid_search_team <- function(res_data,
                              opp_p_hand=NA,
                              opp_pitcher=NA,
                              pitcher=NA,
-                             home_away=NA){
+                             home_away=NA,
+                             opp_f5_pitching_rank=NA,
+                             opp_fg_pitching_rank=NA,
+                             opp_f5_offense_rank=NA,
+                             opp_fg_offense_rank=NA){
 
   assessment_functions = c(team_ats,team_ats_f5,team_ou,team_ou_f5)
-  gsrs =  data.frame(matrix(ncol = 19, nrow = 0))
+  gsrs =  data.frame(matrix(ncol = 23, nrow = 0))
   x <- c("TEAM_NAME","PROFIT","WIN","LOSS","PUSH","TYPE","team_name",
          "opp_team_name","last_n_games","opp_p_hand","opp_pitcher","p_hand",
          "pitcher","home_away","total_line","spread_line","total_line_f5",
-         "spread_line_f5","GSR")
+         "spread_line_f5",
+         "opp_f5_pitching_rank",
+         "opp_fg_pitching_rank",
+         "opp_f5_offense_rank",
+         "opp_fg_offense_rank",
+         "GSR")
   names(gsrs) = x
   for(func in assessment_functions){
 
@@ -586,7 +700,12 @@ grid_search_team <- function(res_data,
                           opp_p_hand,
                           opp_pitcher,
                           pitcher,
-                          home_away) %>%
+                          home_away,
+                          opp_f5_pitching_rank,
+                          opp_fg_pitching_rank,
+                          opp_f5_offense_rank,
+                          opp_fg_offense_rank
+                          ) %>%
       mutate(GSR = "RES")
     gsr_man = man_data %>%
       grid_search_filters(FUN=func,
@@ -596,7 +715,12 @@ grid_search_team <- function(res_data,
                           opp_p_hand,
                           opp_pitcher,
                           pitcher,
-                          home_away) %>%
+                          home_away,
+                          opp_f5_pitching_rank,
+                          opp_fg_pitching_rank,
+                          opp_f5_offense_rank,
+                          opp_fg_offense_rank
+      ) %>%
       mutate(GSR = "MAN")
 
     gsrs = rbind(gsrs,gsr,gsr_man)
@@ -604,7 +728,7 @@ grid_search_team <- function(res_data,
   }
   results = gsrs %>%
     mutate(NUM = WIN + LOSS + PUSH,
-           FILTERS = 12 - rowSums(is.na(gsrs)))
+           FILTERS = 16 - rowSums(is.na(gsrs)))
 
   return(results)
 
@@ -625,7 +749,7 @@ interpreter <- function(data){
     group_by(TYPE) %>%
     arrange(TYPE,desc(FILTERS)) %>%
     mutate(rn = row_number()) %>%
-    filter(rn <4) %>%
+    filter(rn <3) %>%
     filter(!(TYPE %in% c("F5_OVER","F5_UNDER","FG_OVER","FG_UNDER") & PROFIT < 0))
 
   msgs = c()
@@ -644,13 +768,9 @@ writer <- function(row){
   full_game = ifelse(row$TYPE %in% c('FG_ATS',"FG_OVER","FG_UNDER"),TRUE,FALSE)
   over = ifelse(row$TYPE %in% c('FG_OVER',"F5_OVER"),T,F)
 
-  names(row)
-
   filter_qualifier = paste0(
 
     ifelse(row$GSR=='MAN'," using today's line and price",''),
-
-    ifelse(!is.na(row$last_n_games),paste0(' over their last ',row$last_n_games,' games'),''),
 
     ifelse(!is.na(row$pitcher) | !is.na(row$home_away),' when',''),
     ifelse(!is.na(row$home_away),paste0(' ',row$home_away),''),
@@ -663,6 +783,20 @@ writer <- function(row){
     ifelse(!is.na(row$opp_team_name),paste0(' the ',row$opp_team_name,''),''),
     ifelse(!is.na(row$opp_p_hand),paste0(' ',row$opp_p_hand,'HP'),''),
     ifelse(!is.na(row$opp_pitcher),paste0(' ',row$opp_pitcher),''),
+
+    ifelse(!(
+      is.na(row$opp_f5_pitching_rank) &
+        is.na(row$opp_fg_pitching_rank) &
+        is.na(row$opp_f5_offense_rank) &
+        is.na(row$opp_fg_offense_rank)
+    ),' against opponents with',''),
+
+    ifelse(!is.na(row$opp_f5_pitching_rank),paste0(' top ',row$opp_f5_pitching_rank,' first-five pitching'),''),
+    ifelse(!is.na(row$opp_fg_pitching_rank),paste0(' top ',row$opp_fg_pitching_rank,' full-game pitching'),''),
+    ifelse(!is.na(row$opp_f5_offense_rank),paste0(' top ',row$opp_f5_offense_rank,' first-five offense'),''),
+    ifelse(!is.na(row$opp_fg_offense_rank),paste0(' top ',row$opp_fg_offense_rank,' full-game offense'),''),
+
+    ifelse(!is.na(row$last_n_games),paste0(' over their last ',row$last_n_games,' games meeting prior criteria'),''),
 
 
     '.'

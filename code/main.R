@@ -21,20 +21,28 @@ p <- c("tidyverse",
        "httr",
        "lubridate",
        "ggplot2",
-       "reticulate"
+       "reticulate",
+       'rjson'
 )
 
 load_all_packages(p)
 
 source(file.path(objects_path,'odds_functions.r'))
 source(file.path(objects_path,'acquisition_functions.r'))
+source(file.path(objects_path,'team_functions.r'))
 source_python(file.path(objects_path,'bot_file.py'))
 
 ################################################################################
 # Daily Data Prep
 
 tidy_data = read.csv(file.path(data_in,'action','tidy.csv'))
-res_data = res_data_gen(tidy_data)
+hour_adj = hours(4)
+tidy_data$GAME_TIME = as_datetime(tidy_data$GAME_TIME) - hour_adj
+tidy_data$GAME_DATE = as.Date(tidy_data$GAME_TIME)
+
+t_rankings = team_rankings(tidy_data)
+
+res_data = res_data_gen(tidy_data,t_rankings)
 
 ################################################################################
 # Capture Trends:
@@ -53,6 +61,10 @@ res_data = res_data_gen(tidy_data)
 #   - pitcher = NA,
 #   - p_hand = NA,
 #   - home_away = NA
+#   - f5_offense_rank = NA
+#   - fg_offense_rank = NA
+#   - f5_pitching_rank = NA
+#   - fg_pitching_rank = NA
 # Examples:
 # Using actual line and price values
 #
@@ -80,16 +92,20 @@ res_data = res_data_gen(tidy_data)
 
 # @params
 last_n_games = 10
+opp_f5_pitching_rank = 10
+opp_fg_pitching_rank = 10
+opp_f5_offense_rank = 10
+opp_fg_offense_rank =10
 
-d = dates = gsub("-", "", Sys.Date())
+d = gsub("-", "", Sys.Date())
 today_lines = days_results(d)
 
-for(g_num in 1:nrow(today_lines)){
+for(g_num in 6:nrow(today_lines)){
 
   row = today_lines[g_num,]
 
-  res_data = res_data_gen(tidy_data)
   man_data_home = man_data_gen(tidy_data,
+                               t_rankings,
                           row$FG_TOTAL,
                           row$FG_TOTAL_O_PRICE,
                           row$FG_TOTAL_U_PRICE,
@@ -102,6 +118,7 @@ for(g_num in 1:nrow(today_lines)){
                           row$HOME_F5_SPREAD_PRICE)
 
   man_data_away = man_data_gen(tidy_data,
+                               t_rankings,
                                row$FG_TOTAL,
                                row$FG_TOTAL_O_PRICE,
                                row$FG_TOTAL_U_PRICE,
@@ -149,14 +166,26 @@ for(g_num in 1:nrow(today_lines)){
   pitcher = row$AWAY_PITCHER_NAME
   home_away = "AWAY"
 
-  away_gsr = grid_search_team(res_data,man_data_away,
+  # Get opponent ranking
+  t_rank = t_rankings %>%
+    select(TEAM_NAME,GAME_DATE,F5_OFFENSE_RANK,F5_PITCHING_RANK,FG_OFFENSE_RANK,FG_PITCHING_RANK) %>%
+    filter(TEAM_NAME == opp_team_name) %>%
+    ungroup() %>%
+    filter(GAME_DATE == max(GAME_DATE))
+
+  away_gsr = grid_search_team(res_data,
+                   man_data_away,
                    team_name,
                    opp_team_name,
                    last_n_games,
                    opp_p_hand,
                    opp_pitcher,
                    pitcher,
-                   home_away)
+                   home_away,
+                   ifelse(t_rank$F5_PITCHING_RANK <= opp_f5_pitching_rank,opp_f5_pitching_rank,NA),
+                   ifelse(t_rank$FG_PITCHING_RANK <= opp_fg_pitching_rank,opp_fg_pitching_rank,NA),
+                   ifelse(t_rank$F5_OFFENSE_RANK <= opp_f5_offense_rank,opp_f5_offense_rank,NA),
+                   ifelse(t_rank$FG_OFFENSE_RANK <= opp_fg_offense_rank,opp_fg_offense_rank,NA))
 
   away = interpreter(away_gsr) %>%
     unique()
@@ -169,6 +198,13 @@ for(g_num in 1:nrow(today_lines)){
   opp_pitcher = row$AWAY_PITCHER_NAME
   home_away = "HOME"
 
+  # Get opponent ranking
+  t_rank = t_rankings %>%
+    select(TEAM_NAME,GAME_DATE,F5_OFFENSE_RANK,F5_PITCHING_RANK,FG_OFFENSE_RANK,FG_PITCHING_RANK) %>%
+    filter(TEAM_NAME == opp_team_name) %>%
+    ungroup() %>%
+    filter(GAME_DATE == max(GAME_DATE))
+
   home_gsr = grid_search_team(res_data,
                               man_data_home,
                               team_name,
@@ -176,16 +212,39 @@ for(g_num in 1:nrow(today_lines)){
                               last_n_games,
                               opp_p_hand,
                               opp_pitcher,
-                              home_away)
+                              home_away,
+                              ifelse(t_rank$F5_PITCHING_RANK <= opp_f5_pitching_rank,opp_f5_pitching_rank,NA),
+                              ifelse(t_rank$FG_PITCHING_RANK <= opp_fg_pitching_rank,opp_fg_pitching_rank,NA),
+                              ifelse(t_rank$F5_OFFENSE_RANK <= opp_f5_offense_rank,opp_f5_offense_rank,NA),
+                              ifelse(t_rank$FG_OFFENSE_RANK <= opp_fg_offense_rank,opp_fg_offense_rank,NA))
 
 
   home_msgs = interpreter(home_gsr) %>%
     unique()
 
 
+  msg_elem = c(
+    header,
+    subheader1,
+    subheader2,
+    subheader3,
+    '---------',
+    away,
+    '---------',
+    home_msgs,
+    '__________________'
+  )
 
 
+  print('######################################################################')
 
+  output_hookurl <- fromJSON(file=file.path(hook_path,'webhooks.json'))[['trends_url']]
+
+  for(m in msg_elem){
+    print(m)
+    send_to_discord(m,output_hookurl)
+    Sys.sleep(0.5)
+  }
 
 
 
@@ -196,17 +255,7 @@ for(g_num in 1:nrow(today_lines)){
 
 output_hookurl <- fromJSON(file=file.path(hook_path,'webhooks.json'))[['trends_url']]
 
-msg_elem = c(
-  # header,
-  # subheader1,
-  # subheader2,
-  # subheader3,
-  # '---------',
-  # msgs,
-  '---------',
-  home_msgs,
-  '__________________'
-)
+
 
 for(m in msg_elem){
   print(m)
